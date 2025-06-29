@@ -90,7 +90,7 @@ class RadixRouter
      * @return array{
      *   status: int,
      *   handler?: mixed,
-     *   params?: array<string, string>,
+     *   params?: array<string, string|null>,
      *   methods?: array<int, string>
      * }
      */

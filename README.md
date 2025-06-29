@@ -1,6 +1,6 @@
 # RadixRouter
 
-Simple implementation of a radix tree based router. Minimal by design, handling only route matching and basic parameter extraction. Features like middleware, route groups, validation etc are not included. It is intended as a foundation for building more featureful routers or integrating into larger frameworks.
+Simple implementation of a radix tree based router. Intended as a foundation for building more featureful routers or integrating into larger frameworks.
 
 ### Features
 
@@ -22,7 +22,9 @@ Requires PHP 8.1 or newer.
 Here's a basic usage example:
 
 ```PHP
-<?php require __DIR__ . '/../vendor/autoload.php';
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
 
 use Wilaak\Http\RadixRouter;
 
@@ -94,7 +96,7 @@ The handler can be anything you want. This router simply tells you which handler
 
 ### Cache
 
-When using Classic PHP modes (e.g not using `ReactPHP` or `AMPHP` etc), rebuilding the route tree for each request is going to slow down performance. To solve this we can cache the generated route tree.
+When using Classic PHP modes, rebuilding the route tree for each request is going to slow down performance. To solve this we can cache the generated route tree.
 
 > **Note:**  
 > Anonymous functions (closures) are **not supported** for route caching because they cannot be serialized.
@@ -115,7 +117,10 @@ if (!file_exists('routecache.php')) {
     $router->tree = require 'routecache.php';
 }
 
-// ... dispatch
+// Dispatch your routes here!
+$router->dispatch(
+    // ...
+);
 ```
 
 By storing your routes in a PHP file, you let PHP’s OPcache handle the heavy lifting, making startup times nearly instantaneous.
