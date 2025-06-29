@@ -1,6 +1,6 @@
 # RadixRouter
 
-Simple implementation of a radix tree based router. Minimal by design, handling only route matching and basic parameter extraction. Features like middleware, route groups, or validation are not included, giving you full flexibility to extend routing as needed. It is intended as a foundation for building more featureful routers or integrating into larger frameworks.
+Simple implementation of a radix tree based router. Minimal by design, handling only route matching and basic parameter extraction. Features like middleware, route groups, validation etc are not included. It is intended as a foundation for building more featureful routers or integrating into larger frameworks.
 
 ### Features
 
