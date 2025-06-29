@@ -16,17 +16,17 @@ class RadixRouter
     public const DISPATCH_NOT_FOUND   = 1;
     public const DISPATCH_NOT_ALLOWED = 2;
 
-    // The request path is always split by forward slashes so we can
-    // safely use these placeholders without worrying about conflicts.
-    private const NODE_PARAMETER = '/_NODE_PARAMETER_/';
-    private const NODE_WILDCARD  = '/_NODE_WILDCARD_/';
-    private const NODE_ROUTES    = '/_NODE_ROUTES_/';
+    private const NODE_PARAMETER = '/_N_/';
+    private const NODE_WILDCARD  = '/_W_/';
+    private const NODE_ROUTES    = '/_R_/';
 
     /**
      * Adds a route to the route tree.
      */
     public function addRoute(array $methods, string $pattern, mixed $handler): void
     {
+        $methods = array_map(strtoupper(...), $methods);
+
         $segments = array_filter(
             explode('/', $pattern),
             fn($segment) => $segment !== ''
@@ -102,13 +102,9 @@ class RadixRouter
 
         foreach ($routes as $route) {
             $routeMethods = $route['methods'];
-            // Ensure HEAD is allowed if GET is present
-            if (in_array('GET', $routeMethods, true) && !in_array('HEAD', $routeMethods, true)) {
-                $routeMethods[] = 'HEAD';
-            }
-
-            $isWildcard = str_ends_with($route['pattern'], '*}');
             $patternParts = explode('/', $route['pattern']);
+            $lastPatternPart = end($patternParts);
+            $isWildcard = str_starts_with($lastPatternPart, '{') && str_ends_with($lastPatternPart, '*}');
 
             if (
                 (!$isWildcard && count($requestParts) !== count($patternParts)) ||
@@ -131,27 +127,21 @@ class RadixRouter
                 }
             }
 
-            $lastParamKey = array_key_last($params);
-            $isOptional = str_ends_with($route['pattern'], '?}');
-
-            // If the last parameter is optional and empty, remove it from params
-            if ($isOptional && isset($lastParamKey) && empty($params[$lastParamKey])) {
-                unset($params[$lastParamKey]);
-            }
-
-            // If the last parameter is required (not optional or wildcard) and empty, skip this route
-            if (!$isOptional && !$isWildcard && isset($lastParamKey) && empty($params[$lastParamKey])) {
-                continue;
-            }
-
-            // If the route uses a wildcard parameter, join the remaining path segments into a single value
-            if ($isWildcard && isset($lastParamKey)) {
-                $params[$lastParamKey] = implode('/', array_slice($requestParts, count($patternParts) - 1));
-            }
-
-            // If the wildcard parameter is empty after joining, remove it from params
-            if ($isWildcard && isset($lastParamKey) && empty($params[$lastParamKey])) {
-                unset($params[$lastParamKey]);
+            if (!empty($params)) {
+                $isOptional = str_starts_with($lastPatternPart, '{') && str_ends_with($lastPatternPart, '?}');
+                $lastParamKey = array_key_last($params);
+                if ($isOptional && empty($params[$lastParamKey])) {
+                    $params[$lastParamKey] = null;
+                }
+                if (!$isOptional && !$isWildcard && empty($params[$lastParamKey])) {
+                    continue;
+                }
+                if ($isWildcard) {
+                    $params[$lastParamKey] = implode('/', array_slice($requestParts, count($patternParts) - 1));
+                }
+                if ($isWildcard && empty($params[$lastParamKey])) {
+                    $params[$lastParamKey] = null;
+                }
             }
 
             $allowedMethods = array_unique(array_merge($allowedMethods, $routeMethods));

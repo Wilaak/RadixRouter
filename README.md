@@ -1,12 +1,13 @@
 # RadixRouter
 
-Simple implementation of a radix tree based router. Ideal as a starting point for building a more featureful routing system.
+Simple implementation of a radix tree based router. Minimal by design, handling only route matching and basic parameter extraction. Features like middleware, route groups, or validation are not included, giving you full flexibility to extend routing as needed. It is intended as a foundation for building more featureful routers or integrating into larger frameworks.
 
-### Overview
+### Features
 
 - Fast route matching using a radix tree structure
 - Supports required, optional, and wildcard parameters
-- Allows handling of 404 and 405 HTTP responses
+- Handles 404 (Not Found) and 405 (Method Not Allowed) HTTP responses
+- Single file, dependency free and under 200 lines of code
 
 ## Install
 
@@ -27,11 +28,10 @@ use Wilaak\Http\RadixRouter;
 
 $router = new RadixRouter();
 
-$router->addRoute(['GET'], '/{world*}', function ($world = 'World') {
+$router->addRoute(['GET'], '/{world?}', function ($world = 'World') {
     echo "Hello, $world!";
 });
 
-// Fetch method and URI from somewhere
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 $requestUri = rawurldecode(strtok($_SERVER['REQUEST_URI'], '?'));
 
@@ -40,28 +40,28 @@ $info = $router->dispatch(
     $requestUri
 );
 
-switch ($info['status']) {
-    case RadixRouter::DISPATCH_FOUND:
+match ($info['status']) {
+    RadixRouter::DISPATCH_FOUND => (function () use ($info) {
         $handler = $info['handler'];
         $params = $info['params'];
-        // ... call the handler with the parameters
+        $params = array_values(array_filter($params, function ($value) {
+            return !is_null($value);
+        }));
         call_user_func_array($handler, $params);
-        break;
+    })(),
 
-    case RadixRouter::DISPATCH_NOT_FOUND:
-        // ... 404 Not Found
+    RadixRouter::DISPATCH_NOT_FOUND => (function () {
         http_response_code(404);
         echo '404 Not Found';
-        break;
+    })(),
 
-    case RadixRouter::DISPATCH_NOT_ALLOWED:
+    RadixRouter::DISPATCH_NOT_ALLOWED => (function () use ($info) {
         $allowedMethods = $info['methods'];
-        // ... 405 Method Not Allowed
         header('Allow: ' . implode(', ', $allowedMethods));
         http_response_code(405);
         echo '405 Method Not Allowed';
-        break;
-}
+    })(),
+};
 ```
 
 ### Defining Routes
@@ -94,7 +94,7 @@ The handler can be anything you want. This router simply tells you which handler
 
 ### Cache
 
-When using Classic PHP modes, rebuilding the route tree for each request is going to slow down performance. To solve this we can cache the generated route tree.
+When using Classic PHP modes (e.g not using `ReactPHP` or `AMPHP` etc), rebuilding the route tree for each request is going to slow down performance. To solve this we can cache the generated route tree.
 
 > **Note:**  
 > Anonymous functions (closures) are **not supported** for route caching because they cannot be serialized.
@@ -114,6 +114,18 @@ if (!file_exists('routecache.php')) {
     // Load routes from cache
     $router->tree = require 'routecache.php';
 }
+
+// ... dispatch
 ```
 
-By storing your routes in a PHP file, you take advantage of PHP’s OPcache, which compiles and stores the route definitions in memory. Making startup times nearly instantaneous.
+By storing your routes in a PHP file, you let PHP’s OPcache handle the heavy lifting, making startup times nearly instantaneous.
+
+## A Note on HEAD Requests
+
+The HTTP spec requires servers to support both GET and HEAD methods. Routes that support GET requests must also support HEAD requests that return an empty body.
+
+Implementers outside the web SAPI environment (e.g. a custom server) MUST NOT send entity bodies generated in response to HEAD requests. If you are using a custom server, you are responsible for implementing this handling yourself to ensure compliance with the HTTP specification.
+
+## License
+
+This library is licensed under the **WTFPL-2.0**. Do whatever you want with it.

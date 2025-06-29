@@ -12,7 +12,7 @@
     "minimum-stability": "stable",
     "autoload": {
         "psr-4": {
-            "Wilaak\\PicoDI\\": "src/"
+            "Wilaak\\Http\\": "src/"
         }
     },
     "keywords": [
