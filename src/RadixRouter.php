@@ -4,82 +4,77 @@ namespace Wilaak\Http;
 
 use InvalidArgumentException;
 
-/**
- * Simple implementation of a radix tree based router.
- */
 class RadixRouter
 {
-    private int  $order = 0;
-    public array $tree = [];
+    public array $routes = [
+        'static' => [],
+        'tree' => []
+    ];
 
-    public const DISPATCH_FOUND       = 0;
-    public const DISPATCH_NOT_FOUND   = 1;
-    public const DISPATCH_NOT_ALLOWED = 2;
+    public const DISPATCH_FOUND       = 'found';
+    public const DISPATCH_NOT_FOUND   = 'not_found';
+    public const DISPATCH_NOT_ALLOWED = 'not_allowed';
 
-    private const NODE_PARAMETER = '/_N_/';
-    private const NODE_WILDCARD  = '/_W_/';
-    private const NODE_ROUTES    = '/_R_/';
+    private const NODE_PARAMETER = '_PARAM_';
+    private const NODE_WILDCARD  = '_WILDCARD_';
+    private const NODE_ROUTES    = '_ROUTES_';
 
     /**
-     * Adds a route to the route tree.
+     * Adds a new route to the router for the specified HTTP methods, pattern, and handler.
+     *
+     * @param array $methods  The HTTP methods (e.g., ['GET', 'POST']) this route should match.
+     * @param string $pattern The URI pattern for the route (e.g., '/users/{id}').
+     * @param mixed $handler  The handler associated with the route.
+     * 
+     * @return void
      */
     public function addRoute(array $methods, string $pattern, mixed $handler): void
     {
         $methods = array_map(strtoupper(...), $methods);
+        $segments = explode('/', $pattern);
 
-        $segments = array_filter(
-            explode('/', $pattern),
-            fn($segment) => $segment !== ''
-        );
-
-        foreach ($segments as $i => $segment) {
-            $isOptional = str_starts_with($segment, '{') && str_ends_with($segment, '?}');
-            $isWildcard = str_starts_with($segment, '{') && str_ends_with($segment, '*}');
-            if (($isOptional || $isWildcard) && $i !== array_key_last($segments)) {
-                throw new InvalidArgumentException(
-                    "Optional or wildcard parameters must be the last segment in the pattern: $pattern"
-                );
+        $hasParameter = false;
+        foreach ($segments as $index => $node) {
+            if (str_starts_with($node, '{') && str_ends_with($node, '*}')) {
+                if ($index !== count($segments) - 1) {
+                    throw new InvalidArgumentException("Wildcard parameter can only be in the last segment: $pattern");
+                }
+                $node = self::NODE_WILDCARD;
+                $hasParameter = true;
+            } elseif (str_starts_with($node, '{') && str_ends_with($node, '}')) {
+                $node = self::NODE_PARAMETER;
+                $hasParameter = true;
             }
+            $segments[$index] = $node;
         }
 
-        $segments = array_map(function ($segment) {
-            if (!str_starts_with($segment, '{')) {
-                return $segment;
+        if (!$hasParameter) {
+            foreach ($methods as $method) {
+                if (isset($this->routes['static'][$pattern][$method])) {
+                    throw new InvalidArgumentException("Duplicate route for [$method] $pattern");
+                }
+                $this->routes['static'][$pattern][$method] = [
+                    'handler' => $handler,
+                ];
             }
-            if (str_ends_with($segment, '*}')) {
-                return self::NODE_WILDCARD;
-            }
-            if (str_ends_with($segment, '}')) {
-                return self::NODE_PARAMETER;
-            }
-        }, $segments);
+            return;
+        }
 
-        $currentNode = &$this->tree;
+        $currentNode = &$this->routes['tree'];
         foreach ($segments as $node) {
             $currentNode[$node] ??= [];
             $currentNode = &$currentNode[$node];
         }
 
-        if (isset($currentNode[self::NODE_ROUTES])) {
-            foreach ($currentNode[self::NODE_ROUTES] as $route) {
-                foreach ($methods as $method) {
-                    if (in_array($method, $route['methods'], true) && $route['pattern'] === $pattern) {
-                        throw new InvalidArgumentException(
-                            "Duplicate route detected for method '$method' and pattern '$pattern'"
-                        );
-                    }
-                }
-            }
-        }
-
         $currentNode[self::NODE_ROUTES] ??= [];
-        $currentNode[self::NODE_ROUTES][$this->order] = [
-            'methods'    => $methods,
-            'pattern'    => $pattern,
-            'handler'    => $handler,
-        ];
-
-        $this->order++;
+        foreach ($methods as $method) {
+            if (isset($currentNode[self::NODE_ROUTES][$method])) {
+                throw new InvalidArgumentException("Duplicate route for [$method] $pattern");
+            }
+            $currentNode[self::NODE_ROUTES][$method] = [
+                'handler' => $handler,
+            ];
+        }
     }
 
     /**
@@ -88,112 +83,93 @@ class RadixRouter
      * @param string $requestMethod The HTTP method (e.g., 'GET', 'POST').
      * @param string $requestPath   The URI path to match (e.g., '/users/123').
      * @return array{
-     *   status: int,
+     *   status: self::DISPATCH_FOUND|self::DISPATCH_NOT_FOUND|self::DISPATCH_NOT_ALLOWED,
      *   handler?: mixed,
-     *   params?: array<string, string|null>,
-     *   methods?: array<int, string>
+     *   params?: array<int, string>, // May be an empty array if no parameters are present
+     *   methods?: array<int, string> // Only present if the method is not allowed
      * }
      */
     public function dispatch(string $requestMethod, string $requestPath): array
     {
-        $requestParts = explode('/', $requestPath);
-        $routes = $this->findMatchingRoutes($requestPath);
-        $allowedMethods = [];
+        $routes = $this->findRoutes($requestPath);
 
-        foreach ($routes as $route) {
-            $routeMethods = $route['methods'];
-            $patternParts = explode('/', $route['pattern']);
-            $lastPatternPart = end($patternParts);
-            $isWildcard = str_starts_with($lastPatternPart, '{') && str_ends_with($lastPatternPart, '*}');
-
-            if (
-                (!$isWildcard && count($requestParts) !== count($patternParts)) ||
-                ($isWildcard && count($requestParts) < count($patternParts))
-            ) {
-                continue;
-            }
-
-            foreach ($patternParts as $index => $part) {
-                if ($part !== $requestParts[$index] && !str_starts_with($part, '{')) {
-                    continue 2;
-                }
-            }
-
-            $params = [];
-            foreach ($patternParts as $index => $part) {
-                if (str_starts_with($part, '{') && str_ends_with($part, '}')) {
-                    $paramName = trim($part, '{}?*');
-                    $params[$paramName] = $requestParts[$index];
-                }
-            }
-
-            if (!empty($params)) {
-                $isOptional = str_starts_with($lastPatternPart, '{') && str_ends_with($lastPatternPart, '?}');
-                $lastParamKey = array_key_last($params);
-                if ($isOptional && empty($params[$lastParamKey])) {
-                    $params[$lastParamKey] = null;
-                }
-                if (!$isOptional && !$isWildcard && empty($params[$lastParamKey])) {
-                    continue;
-                }
-                if ($isWildcard) {
-                    $params[$lastParamKey] = implode('/', array_slice($requestParts, count($patternParts) - 1));
-                }
-                if ($isWildcard && empty($params[$lastParamKey])) {
-                    $params[$lastParamKey] = null;
-                }
-            }
-
-            $allowedMethods = array_unique(array_merge($allowedMethods, $routeMethods));
-            if (!in_array($requestMethod, $routeMethods)) {
-                continue;
-            }
-
-            return [
-                'status'  => self::DISPATCH_FOUND,
-                'handler' => $route['handler'],
-                'params'  => $params
-            ];
-        }
-
-        if (empty($allowedMethods)) {
+        if ($routes === null) {
             return [
                 'status' => self::DISPATCH_NOT_FOUND,
             ];
-        } else {
+        }
+
+        if (isset($routes['routes'][$requestMethod])) {
             return [
-                'status' => self::DISPATCH_NOT_ALLOWED,
-                'methods' => $allowedMethods
+                'status'  => self::DISPATCH_FOUND,
+                'handler' => $routes['routes'][$requestMethod]['handler'],
+                'params'  => $routes['params'] ?? [],
             ];
         }
+
+        return [
+            'status'  => self::DISPATCH_NOT_ALLOWED,
+            'methods' => array_keys($routes['routes']),
+        ];
     }
 
-    private function findMatchingRoutes(string $path): array
+    private function findRoutes(string $path): ?array
     {
-        $segments = array_filter(
-            explode('/', $path),
-            fn($node) => $node !== ''
-        );
+        if (isset($this->routes['static'][$path])) {
+            return [
+                'routes' => $this->routes['static'][$path],
+            ];
+        }
 
-        $foundRoutes = [];
-        $resolve = function ($tree, $segments) use (&$resolve, &$foundRoutes) {
-            if (empty($segments) && isset($tree[self::NODE_ROUTES])) {
-                $foundRoutes += $tree[self::NODE_ROUTES];
+        $segments = explode('/', $path);
+        $segmentsCount = count($segments);
+
+        $treeStack = [];
+        $idxStack = [];
+        $paramsStack = [];
+        $sp = 0;
+
+        $treeStack[$sp] = $this->routes['tree'];
+        $idxStack[$sp] = 0;
+        $paramsStack[$sp++] = [];
+
+        while ($sp > 0) {
+            $tree = $treeStack[--$sp];
+            $idx = $idxStack[$sp];
+            $params = $paramsStack[$sp];
+
+            if ($idx === $segmentsCount) {
+                if (isset($tree[self::NODE_ROUTES])) {
+                    return [
+                        'routes' => $tree[self::NODE_ROUTES],
+                        'params' => $params,
+                    ];
+                }
+                continue;
             }
-            $segment = array_shift($segments);
-            if ($segment !== null && isset($tree[$segment])) {
-                $resolve($tree[$segment], $segments);
-            }
-            if (isset($tree[self::NODE_PARAMETER])) {
-                $resolve($tree[self::NODE_PARAMETER], $segments);
-            }
+
+            $segment = $segments[$idx];
+
             if (isset($tree[self::NODE_WILDCARD])) {
-                $resolve($tree[self::NODE_WILDCARD], []);
+                $wildParams = $params;
+                $wildParams[] = implode('/', array_slice($segments, $idx));
+                $treeStack[$sp] = $tree[self::NODE_WILDCARD];
+                $idxStack[$sp] = $segmentsCount;
+                $paramsStack[$sp++] = $wildParams;
             }
-        };
-
-        $resolve($this->tree, $segments);
-        ksort($foundRoutes);
-        return $foundRoutes;
+            if (isset($tree[self::NODE_PARAMETER]) && $segment !== '') {
+                $paramParams = $params;
+                $paramParams[] = $segment;
+                $treeStack[$sp] = $tree[self::NODE_PARAMETER];
+                $idxStack[$sp] = $idx + 1;
+                $paramsStack[$sp++] = $paramParams;
+            }
+            if (isset($tree[$segment])) {
+                $treeStack[$sp] = $tree[$segment];
+                $idxStack[$sp] = $idx + 1;
+                $paramsStack[$sp++] = $params;
+            }
+        }
+        return null;
     }
 }
