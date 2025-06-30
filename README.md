@@ -4,11 +4,11 @@ Simple implementation of a radix tree based router.
 
 ### Overview
 
-- Supports parameterized (e.g., `/user/{id}`) and wildcard trailing routes (e.g., `/files/{path*}`)
+- Parameterized (e.g., `/user/{id}`) and wildcard trailing routes (e.g., `/files/{path*}`)
 - Fast, zero-allocation route matching powered by a radix tree.
 - Static routes use a faster direct lookup for optimal performance.
 - Method not allowed handling
-- Zero-dependencies and under only 176 lines of code
+- Zero-dependencies, only 176 lines of code
 
 ## Install
 
@@ -19,6 +19,8 @@ Install with composer:
 Requires PHP 8.1 or newer.
 
 ## Usage
+
+Here's a basic usage example:
 
 ```php
 use Wilaak\Http\RadixRouter;
@@ -60,7 +62,7 @@ switch ($info['status']) {
 }
 ```
 
-### Cache
+## How to Cache Routes
 
 Rebuilding the route tree for each request or startup is going to have an impact on performance. By caching your routes you can achieve much faster startup times.
 
