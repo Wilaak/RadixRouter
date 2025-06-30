@@ -85,7 +85,7 @@ class RadixRouter
      * @return array{
      *   status: self::DISPATCH_FOUND|self::DISPATCH_NOT_FOUND|self::DISPATCH_NOT_ALLOWED,
      *   handler?: mixed,
-     *   params?: array<int, string>, // May be an empty array if no parameters are present
+     *   params?: array<int, string>,
      *   methods?: array<int, string> // Only present if the method is not allowed
      * }
      */
