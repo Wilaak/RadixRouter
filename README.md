@@ -30,7 +30,7 @@ $router->addRoute(['GET'], '/:world?', function ($world = 'World') {
     echo "Hello, $world!";
 });
 
-$info = $router->dispatch('GET', '/users/123');
+$info = $router->dispatch('GET', '/');
 
 switch ($info['status']) {
     case RadixRouter::DISPATCH_FOUND:
