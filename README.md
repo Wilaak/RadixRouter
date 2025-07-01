@@ -4,11 +4,10 @@ Simple implementation of a radix tree based router.
 
 ### Overview
 
-- Parameterized (e.g., `/user/{id}`) and wildcard trailing routes (e.g., `/files/{path*}`)
-- Fast, zero-allocation route matching powered by a radix tree.
-- Static routes use a faster direct lookup for optimal performance.
-- Method not allowed handling
-- Zero-dependencies, only 176 lines of code
+- Supports parameterized routes (e.g., `/user/:id`) and wildcard trailing routes (e.g., `/files/:path*`)
+- Fast direct lookup for static routes ensures optimal performance
+- Built-in handling for "Method Not Allowed" responses
+- Lightweight: single file, zero dependencies, under 200 lines of code
 
 ## Install
 
@@ -27,7 +26,7 @@ use Wilaak\Http\RadixRouter;
 
 $router = new RadixRouter();
 
-$router->addRoute(['GET'], '/users/{id}', function ($id) {
+$router->addRoute(['GET'], '/users/:id', function ($id) {
     echo "User ID: $id";
 });
 
@@ -35,7 +34,7 @@ $router->addRoute(['POST'], '/users', function () {
     echo 'User created';
 });
 
-$router->addRoute(['GET'], '/files/{path*}', function ($path) {
+$router->addRoute(['GET'], '/files/:path*', function ($path) {
     echo "File path: $path";
 });
 
@@ -62,9 +61,21 @@ switch ($info['status']) {
 }
 ```
 
-## How to Cache Routes
+### Defining routes
 
-Rebuilding the route tree for each request or startup is going to have an impact on performance. By caching your routes you can achieve much faster startup times.
+Define routes using `addRoute([methods], pattern, handler)`. Patterns can be static (e.g., `/about`), parameterized (e.g., `/user/:id`), or wildcard (e.g., `/files/:path*`).
+
+```php
+$router->addRoute(['GET'], '/about', $aboutHandler);           // Static
+$router->addRoute(['GET'], '/user/:id', $userHandler);         // Parameter
+$router->addRoute(['GET'], '/files/:path*', $filesHandler);    // Wildcard
+```
+
+Static routes are matched first (exact path), parameter routes (e.g., `:id`) are matched next. Wildcard routes (e.g., `:path*`) are matched last.
+
+### How to Cache Routes
+
+Rebuilding the route tree on every request or application startup can slow down your application. By caching your routes, you can significantly improve startup performance and ensure your router is ready to handle requests instantly.
 
 > **Note:**  
 > Anonymous functions (closures) are **not supported** for route caching because they cannot be serialized.
@@ -92,11 +103,11 @@ $router->dispatch('GET', '/your/path');
 
 By storing your routes in a PHP file, you let PHP’s OPcache handle the heavy lifting, making startup times nearly instantaneous.
 
-## A Note on HEAD Requests
+### HEAD Requests
 
-The HTTP spec requires servers to support both GET and HEAD methods. Routes that support GET requests must also support HEAD requests that return an empty body.
+According to the HTTP specification, servers should support both GET and HEAD methods. Any route that handles GET requests should also handle HEAD requests, returning the same headers but with an empty body.
 
-Implementers outside the web SAPI environment (e.g. a custom server) MUST NOT send entity bodies generated in response to HEAD requests. If you are using a custom server, you are responsible for implementing this handling yourself to ensure compliance with the HTTP specification.
+If you're running RadixRouter outside of a standard web SAPI (for example, in a custom server), ensure that responses to HEAD requests do not include a message body. This helps maintain compatibility with the HTTP specification and ensures correct client behavior.
 
 ## License
 

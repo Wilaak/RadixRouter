@@ -15,33 +15,47 @@ class RadixRouter
     public const DISPATCH_NOT_FOUND   = 'not_found';
     public const DISPATCH_NOT_ALLOWED = 'not_allowed';
 
-    private const NODE_PARAMETER = '_PARAM_';
-    private const NODE_WILDCARD  = '_WILDCARD_';
-    private const NODE_ROUTES    = '_ROUTES_';
+    private const NODE_PARAMETER = '/p';
+    private const NODE_WILDCARD  = '/w';
+    private const NODE_ROUTES    = '/r';
 
     /**
      * Adds a new route to the router for the specified HTTP methods, pattern, and handler.
      *
      * @param array $methods  The HTTP methods (e.g., ['GET', 'POST']) this route should match.
-     * @param string $pattern The URI pattern for the route (e.g., '/users/{id}').
+     * @param string $pattern The URI pattern for the route (e.g., '/users/:id', '/files/:path*').
      * @param mixed $handler  The handler associated with the route.
      * 
      * @return void
      */
     public function addRoute(array $methods, string $pattern, mixed $handler): void
     {
-        $methods = array_map(strtoupper(...), $methods);
+        $methods = array_map('strtoupper', $methods);
         $segments = explode('/', $pattern);
 
         $hasParameter = false;
+        $paramNames = [];
         foreach ($segments as $index => $node) {
-            if (str_starts_with($node, '{') && str_ends_with($node, '*}')) {
+            if (
+                str_starts_with($node, ':') &&
+                str_ends_with($node, '*')
+            ) {
                 if ($index !== count($segments) - 1) {
-                    throw new InvalidArgumentException("Wildcard parameter can only be in the last segment: $pattern");
+                    throw new InvalidArgumentException("Wildcard parameter must be the last segment: $pattern");
                 }
+                $paramName = substr($node, 1, -1);
+                if ($paramName === '') {
+                    throw new InvalidArgumentException("Wildcard parameter must have a name: $pattern");
+                }
+                $paramNames[] = $paramName;
                 $node = self::NODE_WILDCARD;
                 $hasParameter = true;
-            } elseif (str_starts_with($node, '{') && str_ends_with($node, '}')) {
+            } elseif (str_starts_with($node, ':')) {
+                $paramName = substr($node, 1);
+                if ($paramName === '') {
+                    throw new InvalidArgumentException("Parameter must have a name: $pattern");
+                }
+                $paramNames[] = $paramName;
                 $node = self::NODE_PARAMETER;
                 $hasParameter = true;
             }
@@ -73,6 +87,7 @@ class RadixRouter
             }
             $currentNode[self::NODE_ROUTES][$method] = [
                 'handler' => $handler,
+                'paramNames' => $paramNames,
             ];
         }
     }
@@ -85,8 +100,8 @@ class RadixRouter
      * @return array{
      *   status: self::DISPATCH_FOUND|self::DISPATCH_NOT_FOUND|self::DISPATCH_NOT_ALLOWED,
      *   handler?: mixed,
-     *   params?: array<int, string>,
-     *   methods?: array<int, string> // Only present if the method is not allowed
+     *   params?: array<string, string>,
+     *   methods?: array<int, string>
      * }
      */
     public function dispatch(string $requestMethod, string $requestPath): array
@@ -94,16 +109,19 @@ class RadixRouter
         $routes = $this->findRoutes($requestPath);
 
         if ($routes === null) {
-            return [
-                'status' => self::DISPATCH_NOT_FOUND,
-            ];
+            return ['status' => self::DISPATCH_NOT_FOUND];
         }
 
         if (isset($routes['routes'][$requestMethod])) {
+            $route = $routes['routes'][$requestMethod];
+            $params = $routes['params'] ?? [];
+            if (!empty($params)) {
+                $params = array_combine($route['paramNames'], $params);
+            }
             return [
                 'status'  => self::DISPATCH_FOUND,
-                'handler' => $routes['routes'][$requestMethod]['handler'],
-                'params'  => $routes['params'] ?? [],
+                'handler' => $route['handler'],
+                'params'  => $params,
             ];
         }
 
@@ -116,9 +134,7 @@ class RadixRouter
     private function findRoutes(string $path): ?array
     {
         if (isset($this->routes['static'][$path])) {
-            return [
-                'routes' => $this->routes['static'][$path],
-            ];
+            return ['routes' => $this->routes['static'][$path]];
         }
 
         $segments = explode('/', $path);
