@@ -139,53 +139,77 @@ class RadixRouter
 
         $segments = explode('/', $path);
         $segmentsCount = count($segments);
+        $currentSegment = 0;
+        $params = [];
+        $tree = &$this->routes['tree'];
 
-        $treeStack = [];
-        $idxStack = [];
-        $paramsStack = [];
-        $sp = 0;
+        // Track the deepest encountered wildcard node for fallback matching
+        $wildcardNode = null;
+        $wildcardIdx = -1;
+        $wildcardParams = null;
 
-        $treeStack[$sp] = $this->routes['tree'];
-        $idxStack[$sp] = 0;
-        $paramsStack[$sp++] = [];
-
-        while ($sp > 0) {
-            $tree = $treeStack[--$sp];
-            $idx = $idxStack[$sp];
-            $params = $paramsStack[$sp];
-
-            if ($idx === $segmentsCount) {
+        while (true) {
+            if ($currentSegment === $segmentsCount) {
                 if (isset($tree[self::NODE_ROUTES])) {
                     return [
                         'routes' => $tree[self::NODE_ROUTES],
                         'params' => $params,
                     ];
                 }
+                if ($wildcardNode !== null && $wildcardIdx >= 0 && isset($wildcardNode[self::NODE_ROUTES])) {
+                    $wildParams = $wildcardParams;
+                    $wildParams[] = implode('/', array_slice($segments, $wildcardIdx));
+                    return [
+                        'routes' => $wildcardNode[self::NODE_ROUTES],
+                        'params' => $wildParams,
+                    ];
+                }
+                return null;
+            }
+            $segment = $segments[$currentSegment];
+            if (isset($tree[$segment])) {
+                if (isset($tree[self::NODE_WILDCARD])) {
+                    $wildcardNode = $tree[self::NODE_WILDCARD];
+                    $wildcardIdx = $currentSegment;
+                    $wildcardParams = $params;
+                }
+                $tree = &$tree[$segment];
+                $currentSegment++;
                 continue;
             }
-
-            $segment = $segments[$idx];
-
+            if (isset($tree[self::NODE_PARAMETER]) && $segment !== '') {
+                if (isset($tree[self::NODE_WILDCARD])) {
+                    $wildcardNode = $tree[self::NODE_WILDCARD];
+                    $wildcardIdx = $currentSegment;
+                    $wildcardParams = $params;
+                }
+                $params[] = $segment;
+                $tree = &$tree[self::NODE_PARAMETER];
+                $currentSegment++;
+                continue;
+            }
             if (isset($tree[self::NODE_WILDCARD])) {
                 $wildParams = $params;
-                $wildParams[] = implode('/', array_slice($segments, $idx));
-                $treeStack[$sp] = $tree[self::NODE_WILDCARD];
-                $idxStack[$sp] = $segmentsCount;
-                $paramsStack[$sp++] = $wildParams;
+                $wildParams[] = implode('/', array_slice($segments, $currentSegment));
+                $tree = &$tree[self::NODE_WILDCARD];
+                $currentSegment = $segmentsCount;
+                if (isset($tree[self::NODE_ROUTES])) {
+                    return [
+                        'routes' => $tree[self::NODE_ROUTES],
+                        'params' => $wildParams,
+                    ];
+                }
+                return null;
             }
-            if (isset($tree[self::NODE_PARAMETER]) && $segment !== '') {
-                $paramParams = $params;
-                $paramParams[] = $segment;
-                $treeStack[$sp] = $tree[self::NODE_PARAMETER];
-                $idxStack[$sp] = $idx + 1;
-                $paramsStack[$sp++] = $paramParams;
+            if ($wildcardNode !== null && $wildcardIdx >= 0 && isset($wildcardNode[self::NODE_ROUTES])) {
+                $wildParams = $wildcardParams;
+                $wildParams[] = implode('/', array_slice($segments, $wildcardIdx));
+                return [
+                    'routes' => $wildcardNode[self::NODE_ROUTES],
+                    'params' => $wildParams,
+                ];
             }
-            if (isset($tree[$segment])) {
-                $treeStack[$sp] = $tree[$segment];
-                $idxStack[$sp] = $idx + 1;
-                $paramsStack[$sp++] = $params;
-            }
+            return null;
         }
-        return null;
     }
 }
