@@ -1,13 +1,18 @@
 # RadixRouter
 
-Simple implementation of a radix tree based router. Minimal feature set, serving as a foundation for building more advanced and feature-rich routers.
+Simple implementation of a radix tree-based router.
 
-### Overview
+- **High Performance Radix Tree Lookup:**  
+    Uses a radix tree structure for fast and efficient route matching.
 
-- Supports parameterized routes (e.g., `/user/:id`) and wildcard trailing routes (e.g., `/files/:path*`)
-- Fast direct lookup for static routes ensures optimal performance
-- Provides handling for "Method Not Allowed" responses
-- Lightweight: single file, zero dependencies, under 200 lines of code
+- **O(1) Static Route Lookup:**  
+    Static routes are stored in a hash map, allowing instant lookup for optimal performance.
+
+- **Supports Parameters and Wildcards:**  
+    Define parameterized routes like `/user/:id` and wildcard routes like `/files/:path*` for flexible matching.
+
+- **Method Not Allowed Responses:**  
+    Allows for HTTP spec compliant responses when a route exists but the HTTP method is not allowed.
 
 ## Install
 
@@ -26,7 +31,7 @@ use Wilaak\Http\RadixRouter;
 
 $router = new RadixRouter();
 
-$router->addRoute(['GET'], '/:world?', function ($world = 'World') {
+$router->addRoute(['GET'], '/:world', function ($world = 'World') {
     echo "Hello, $world!";
 });
 
@@ -115,7 +120,7 @@ By storing your routes in a PHP file, you let PHP’s OPcache handle the heavy l
 
 ### Note on HEAD Requests
 
-According to the HTTP specification, any route that handles a GET request should also support the HEAD method for the same path. RadixRouter does not add this behavior automatically. If you're running outside a typical web server environment (like in a custom server), make sure your GET routes also respond to HEAD requests—just remember that HEAD responses should not include a message body.
+The HTTP specification specifies that any route that handles a GET request should also support HEAD requests. RadixRouter does not add this behavior automatically. If you're running outside a typical web server environment (like in a custom server), make sure your GET routes also respond to HEAD requests. HEAD responses should not include a message body.
 
 ## License
 

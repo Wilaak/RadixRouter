@@ -114,7 +114,7 @@ class RadixRouter
 
         if (isset($routes['routes'][$requestMethod])) {
             $route = $routes['routes'][$requestMethod];
-            $params = $routes['params'] ?? [];
+            $params = $routes['params'];
             if (!empty($params)) {
                 $params = array_combine($route['paramNames'], $params);
             }
